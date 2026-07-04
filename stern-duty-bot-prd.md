@@ -65,29 +65,30 @@ Configuration should come from environment variables:
 ```bash
 GOOGLE_SHEET_ID=...
 GOOGLE_SHEET_TAB_NAME=Staff Duty Rotation
-GOOGLE_SERVICE_ACCOUNT_JSON=/app/secrets/google-service-account.json
+GOOGLE_OAUTH_CLIENT_JSON=/app/secrets/oauth_client.json
+GOOGLE_OAUTH_TOKEN_JSON=/app/secrets/authorized_user.json
 TIMEZONE=America/Los_Angeles
 DUTY_YEAR=2026
 SLACK_WEBHOOK_URL=...
 ```
 
-The Google service account only needs read access to the sheet.
+The bot authenticates via OAuth as a user who can already open the sheet (needed because the sheet's Workspace blocks sharing with service-account addresses outside its domain). It requests read-only access only.
 
 ## 5. Expected Sheet Columns
 
-The script should be configurable, but the expected columns are:
+The script should be configurable, but the columns it reads are:
 
 ```text
-Duty Date | Day | Date Text | Stern RAM A | Stern RAM B | Stern ARD | RD
+Duty Date | Stern RAM A | Stern RAM B | Stern ARD | RD
 ```
 
 Example row:
 
 ```text
-July 5 | Sunday | July 5 | Simran Kaur | Stedmon Searcie | Natalie Villanueva | Anica Terbijhe
+July 5 | Simran Kaur | Stedmon Searcie | Natalie Villanueva | Anica Terbijhe
 ```
 
-The original sheet may include extra Bowles columns. Ignore them.
+Headers are matched by prefix, so the real sheet's trailing spaces and parenthetical notes (e.g. `Stern RAM A\n(Duty Phone/Transport)`, `RD\n(Stern/Bowles)`) are handled automatically. The weekday and displayed date are derived from `Duty Date`; there are no separate `Day`/`Date Text` columns. The original sheet also includes parallel Bowles columns — ignore them.
 
 ## 6. Date Matching
 
@@ -359,8 +360,7 @@ docker compose run --rm duty-bot --dry-run --date 2026-07-05
 The README should explain:
 
 - How to create a Slack incoming webhook
-- How to create a Google service account
-- How to share the Google Sheet with the service account email
+- How to set up Google OAuth credentials (Desktop app client) and do the one-time login
 - How to configure `.env`
 - How to fill `staff_directory.yml`
 - How to run locally

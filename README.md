@@ -22,25 +22,26 @@ RAM B (rounds/backup): @Stedmon Searcie
 3. Pick the channel the duty post should go to.
 4. Copy the webhook URL (`https://hooks.slack.com/services/...`) — you'll put it in `.env`.
 
-### 2. Create a Google service account
+### 2. Set up Google authentication (OAuth)
+
+The bot authenticates as *you*, so it can read sheets owned by an organization that blocks sharing outside its domain (e.g. a `berkeley.edu` sheet you can open but can't share with a bot email).
 
 1. Go to <https://console.cloud.google.com/>, create (or pick) a project.
 2. Enable the **Google Sheets API** for the project.
-3. Under **IAM & Admin → Service Accounts**, create a service account (no special roles needed).
-4. Open the service account → **Keys → Add key → JSON**. Download the key file.
-5. Save it as `secrets/google-service-account.json`.
+3. Configure the **OAuth consent screen**. To avoid refresh tokens expiring every 7 days, set the app's publishing status to **In production** (an Internal app within your org is ideal).
+4. Under **APIs & Services → Credentials → Create Credentials → OAuth client ID**, choose application type **Desktop app**. Download the JSON.
+5. Save it as `secrets/oauth_client.json`.
+6. Run the bot once **locally** (`python -m duty_bot --dry-run`). A browser opens — log in with the account that can access the sheet and approve read-only access. This caches a token at `secrets/authorized_user.json`, which is reused on every future run (including in Docker). No sheet sharing needed.
 
-### 3. Share the Google Sheet with the service account
-
-Open the duty rotation sheet, click **Share**, and add the service account's email (looks like `something@project.iam.gserviceaccount.com`) as a **Viewer**. Read access is all it needs.
-
-The sheet tab is expected to have these columns (extra columns are ignored):
+The sheet tab is expected to have these columns (extra columns, including the parallel Bowles columns, are ignored):
 
 ```text
-Duty Date | Day | Date Text | Stern RAM A | Stern RAM B | Stern ARD | RD
+Duty Date | Stern RAM A | Stern RAM B | Stern ARD | RD
 ```
 
-### 4. Configure `.env`
+Column headers are matched by prefix, so trailing spaces and parenthetical notes in the real sheet (e.g. `Stern RAM A\n(Duty Phone/Transport)`, `RD\n(Stern/Bowles)`) are handled automatically. The `Duty Date` cell holds a value like `July 5`; the weekday and date shown in the post are derived from it (no separate `Day`/`Date Text` columns needed).
+
+### 3. Configure `.env`
 
 ```bash
 cp .env.example .env
@@ -48,7 +49,7 @@ cp .env.example .env
 
 Fill in `GOOGLE_SHEET_ID` (from the sheet URL), `SLACK_WEBHOOK_URL`, and `DUTY_YEAR` (the year to assume for sheet dates like "July 5" that omit it). Never commit `.env`.
 
-### 5. Fill `config/staff_directory.yml`
+### 4. Fill `config/staff_directory.yml`
 
 ```bash
 cp config/staff_directory.yml.example config/staff_directory.yml

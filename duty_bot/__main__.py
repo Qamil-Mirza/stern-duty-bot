@@ -63,8 +63,8 @@ def main(argv=None):
 
     directory = load_staff_directory(STAFF_DIRECTORY_PATH)
     text = format_message(
-        day=row["Day"],
-        date_text=row["Date Text"],
+        day=target_date.strftime("%A"),
+        date_text=f"{target_date.strftime('%B')} {target_date.day}",
         rd=resolve_mention(directory, str(row["RD"]).strip()),
         ard=resolve_mention(directory, str(row["Stern ARD"]).strip()),
         ram_a=resolve_mention(directory, str(row["Stern RAM A"]).strip()),

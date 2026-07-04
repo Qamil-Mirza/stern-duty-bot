@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 class Config:
     sheet_id: str
     sheet_tab_name: str
-    service_account_path: str
+    oauth_client_path: str
+    oauth_token_path: str
     timezone: str
     duty_year: int
     slack_webhook_url: str
@@ -20,8 +21,11 @@ def load_config():
     return Config(
         sheet_id=os.getenv("GOOGLE_SHEET_ID", ""),
         sheet_tab_name=os.getenv("GOOGLE_SHEET_TAB_NAME", "Staff Duty Rotation"),
-        service_account_path=os.getenv(
-            "GOOGLE_SERVICE_ACCOUNT_JSON", "secrets/google-service-account.json"
+        oauth_client_path=os.getenv(
+            "GOOGLE_OAUTH_CLIENT_JSON", "secrets/oauth_client.json"
+        ),
+        oauth_token_path=os.getenv(
+            "GOOGLE_OAUTH_TOKEN_JSON", "secrets/authorized_user.json"
         ),
         timezone=os.getenv("TIMEZONE", "America/Los_Angeles"),
         duty_year=int(os.getenv("DUTY_YEAR", str(datetime.date.today().year))),
