@@ -1,0 +1,8 @@
+services:
+  duty-bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./config:/app/config:ro
+      - ./secrets:/app/secrets:ro
+      - ./data:/app/data

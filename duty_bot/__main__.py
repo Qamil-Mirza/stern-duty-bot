@@ -1,0 +1,94 @@
+import argparse
+import datetime
+import logging
+import sys
+from zoneinfo import ZoneInfo
+
+from duty_bot.config import load_config
+from duty_bot.parser import find_duty_row, missing_fields
+from duty_bot.sheets import fetch_rows
+from duty_bot.slack import format_message, post_message
+from duty_bot.staff_directory import load_staff_directory, resolve_mention
+from duty_bot.state import load_last_posted, save_last_posted
+
+STAFF_DIRECTORY_PATH = "config/staff_directory.yml"
+STATE_PATH = "data/last_posted.json"
+
+logger = logging.getLogger("duty_bot")
+
+
+def main(argv=None):
+    arg_parser = argparse.ArgumentParser(
+        prog="duty_bot", description="Post the Stern duty rotation to Slack."
+    )
+    arg_parser.add_argument("--date", help="Run for this date (YYYY-MM-DD) instead of today.")
+    arg_parser.add_argument(
+        "--dry-run", action="store_true", help="Print the message without posting."
+    )
+    arg_parser.add_argument(
+        "--force", action="store_true", help="Post even if already posted for this date."
+    )
+    args = arg_parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    config = load_config()
+
+    if args.date:
+        target_date = datetime.date.fromisoformat(args.date)
+    else:
+        target_date = datetime.datetime.now(ZoneInfo(config.timezone)).date()
+
+    if not args.force and not args.dry_run:
+        if load_last_posted(STATE_PATH) == target_date.isoformat():
+            logger.info("Already posted for %s; skipping (use --force to repost).", target_date)
+            return 0
+
+    try:
+        rows = fetch_rows(config)
+    except Exception as error:
+        logger.error("Failed to read Google Sheet: %s", error)
+        return 1
+
+    row = find_duty_row(rows, target_date, config.duty_year)
+    if row is None:
+        logger.info("No duty row found for today.")
+        return 0
+
+    missing = missing_fields(row)
+    if missing:
+        logger.error(
+            "Duty row for %s is missing required fields: %s", target_date, ", ".join(missing)
+        )
+        return 1
+
+    directory = load_staff_directory(STAFF_DIRECTORY_PATH)
+    text = format_message(
+        day=row["Day"],
+        date_text=row["Date Text"],
+        rd=resolve_mention(directory, str(row["RD"]).strip()),
+        ard=resolve_mention(directory, str(row["Stern ARD"]).strip()),
+        ram_a=resolve_mention(directory, str(row["Stern RAM A"]).strip()),
+        ram_b=resolve_mention(directory, str(row["Stern RAM B"]).strip()),
+    )
+
+    if args.dry_run:
+        print(text)
+        return 0
+
+    if not config.slack_webhook_url:
+        logger.error("SLACK_WEBHOOK_URL is not set.")
+        return 1
+
+    try:
+        post_message(config.slack_webhook_url, text)
+    except RuntimeError as error:
+        logger.error("%s", error)
+        return 1
+
+    save_last_posted(STATE_PATH, target_date.isoformat())
+    logger.info("Posted duty rotation for %s.", target_date)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

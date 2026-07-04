@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Secrets and local config — never commit
+.env
+secrets/*
+!secrets/.gitkeep
+config/staff_directory.yml
+
+# Local state and logs
+data/*
+!data/.gitkeep
+logs/

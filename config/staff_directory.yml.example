@@ -1,0 +1,9 @@
+# Copy to config/staff_directory.yml and fill in real Slack member IDs.
+# Names must match the Google Sheet exactly.
+# Find a member ID in Slack: profile -> "..." -> "Copy member ID".
+staff:
+  "Qamil Mirza bin Abdullah": "<@U123456789>"
+  "Simran Kaur": "<@U234567890>"
+  "Stedmon Searcie": "<@U345678901>"
+  "Natalie Villanueva": "<@U456789012>"
+  "Anica Terbijhe": "<@U567890123>"
