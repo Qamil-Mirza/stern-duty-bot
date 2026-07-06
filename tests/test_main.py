@@ -39,10 +39,14 @@ def posts(tmp_path, monkeypatch):
         '  "Simran Kaur": "<@URAMA>"\n'
         '  "Stedmon Searcie": "<@URAMB>"\n'
     )
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets" / "authorized_user.json").write_text('{"refresh_token": "x"}')
     monkeypatch.setattr(main_mod, "fetch_rows", lambda config: [ROW])
     sent = []
     monkeypatch.setattr(main_mod, "post_message", lambda url, text: sent.append(text))
-    return sent
+    alerts = []
+    monkeypatch.setattr(main_mod, "send_alert", lambda url, text: alerts.append(text))
+    return sent, alerts
 
 
 def read_state(tmp_path):
@@ -53,55 +57,134 @@ def read_state(tmp_path):
 
 
 def test_dry_run_prints_message_without_posting(posts, tmp_path, capsys):
+    sent, alerts = posts
     assert main_mod.main(["--dry-run", "--date", "2026-07-05"]) == 0
     assert EXPECTED_MESSAGE in capsys.readouterr().out
-    assert posts == []
+    assert sent == []
     assert read_state(tmp_path) is None
 
 
 def test_posts_message_and_records_state(posts, tmp_path):
+    sent, alerts = posts
     assert main_mod.main(["--date", "2026-07-05"]) == 0
-    assert posts == [EXPECTED_MESSAGE]
+    assert sent == [EXPECTED_MESSAGE]
     assert read_state(tmp_path) == "2026-07-05"
 
 
 def test_skips_duplicate_post_for_same_date(posts):
+    sent, alerts = posts
     main_mod.main(["--date", "2026-07-05"])
     assert main_mod.main(["--date", "2026-07-05"]) == 0
-    assert len(posts) == 1
+    assert len(sent) == 1
 
 
 def test_force_reposts_same_date(posts):
+    sent, alerts = posts
     main_mod.main(["--date", "2026-07-05"])
     assert main_mod.main(["--date", "2026-07-05", "--force"]) == 0
-    assert len(posts) == 2
+    assert len(sent) == 2
 
 
 def test_no_matching_row_exits_normally_without_posting(posts):
+    sent, alerts = posts
     assert main_mod.main(["--date", "2026-12-25"]) == 0
-    assert posts == []
+    assert sent == []
 
 
 def test_missing_required_field_errors_without_posting(posts, monkeypatch):
+    sent, alerts = posts
     incomplete = dict(ROW, RD="")
     monkeypatch.setattr(main_mod, "fetch_rows", lambda config: [incomplete])
     assert main_mod.main(["--date", "2026-07-05"]) == 1
-    assert posts == []
+    assert sent == []
 
 
 def test_sheet_read_failure_exits_with_error(posts, monkeypatch):
+    sent, alerts = posts
+
     def boom(config):
         raise RuntimeError("sheet unavailable")
 
     monkeypatch.setattr(main_mod, "fetch_rows", boom)
     assert main_mod.main(["--date", "2026-07-05"]) == 1
-    assert posts == []
+    assert sent == []
 
 
 def test_slack_failure_exits_with_error_and_keeps_state_clean(tmp_path, posts, monkeypatch):
+    sent, alerts = posts
+
     def boom(url, text):
         raise RuntimeError("Slack post failed: status=500 body=oops")
 
     monkeypatch.setattr(main_mod, "post_message", boom)
     assert main_mod.main(["--date", "2026-07-05"]) == 1
     assert read_state(tmp_path) is None
+
+
+def test_alert_on_sheet_read_failure(posts, monkeypatch):
+    sent, alerts = posts
+
+    def boom(config):
+        raise RuntimeError("sheet unavailable")
+
+    monkeypatch.setattr(main_mod, "fetch_rows", boom)
+    assert main_mod.main(["--date", "2026-07-05"]) == 1
+    assert len(alerts) == 1
+    assert "sheet unavailable" in alerts[0]
+
+
+def test_alert_on_missing_required_field(posts, monkeypatch):
+    sent, alerts = posts
+    incomplete = dict(ROW, RD="")
+    monkeypatch.setattr(main_mod, "fetch_rows", lambda config: [incomplete])
+    assert main_mod.main(["--date", "2026-07-05"]) == 1
+    assert len(alerts) == 1
+    assert "missing required fields" in alerts[0]
+
+
+def test_alert_on_slack_failure(posts, monkeypatch):
+    sent, alerts = posts
+
+    def boom(url, text):
+        raise RuntimeError("Slack post failed: status=500 body=oops")
+
+    monkeypatch.setattr(main_mod, "post_message", boom)
+    assert main_mod.main(["--date", "2026-07-05"]) == 1
+    assert len(alerts) == 1
+    assert "failed to post to Slack" in alerts[0]
+
+
+def test_alert_on_missing_token_file(posts, tmp_path, monkeypatch):
+    sent, alerts = posts
+    called = []
+    monkeypatch.setattr(main_mod, "fetch_rows", lambda config: called.append(1) or [])
+    (tmp_path / "secrets" / "authorized_user.json").unlink()
+    assert main_mod.main(["--date", "2026-07-05"]) == 1
+    assert called == []  # Google was never touched
+    assert len(alerts) == 1
+    assert "token file" in alerts[0]
+
+
+def test_no_alert_on_success(posts):
+    sent, alerts = posts
+    assert main_mod.main(["--date", "2026-07-05"]) == 0
+    assert alerts == []
+
+
+def test_no_alert_on_no_row(posts):
+    sent, alerts = posts
+    assert main_mod.main(["--date", "2026-12-25"]) == 0
+    assert alerts == []
+
+
+def test_alert_on_unexpected_exception(posts, monkeypatch):
+    sent, alerts = posts
+
+    def boom(path):
+        raise ValueError("corrupt state file")
+
+    monkeypatch.setattr(main_mod, "load_last_posted", boom)
+    assert main_mod.main(["--date", "2026-07-05"]) == 1
+    assert len(alerts) == 1
+    assert "unexpected error" in alerts[0]
+    assert "corrupt state file" in alerts[0]

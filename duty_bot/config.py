@@ -14,6 +14,7 @@ class Config:
     timezone: str
     duty_year: int
     slack_webhook_url: str
+    slack_alert_webhook_url: str
 
 
 def load_config():
@@ -30,4 +31,5 @@ def load_config():
         timezone=os.getenv("TIMEZONE", "America/Los_Angeles"),
         duty_year=int(os.getenv("DUTY_YEAR", str(datetime.date.today().year))),
         slack_webhook_url=os.getenv("SLACK_WEBHOOK_URL", ""),
+        slack_alert_webhook_url=os.getenv("SLACK_ALERT_WEBHOOK_URL", ""),
     )

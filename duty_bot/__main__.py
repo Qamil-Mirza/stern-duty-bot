@@ -1,13 +1,14 @@
 import argparse
 import datetime
 import logging
+import os
 import sys
 from zoneinfo import ZoneInfo
 
 from duty_bot.config import load_config
 from duty_bot.parser import find_duty_row, missing_fields
 from duty_bot.sheets import fetch_rows
-from duty_bot.slack import format_message, post_message
+from duty_bot.slack import format_message, post_message, send_alert
 from duty_bot.staff_directory import load_staff_directory, resolve_mention
 from duty_bot.state import load_last_posted, save_last_posted
 
@@ -33,10 +34,32 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     config = load_config()
 
+    try:
+        return _run(config, args)
+    except Exception as error:
+        message = f"⚠️ Stern duty bot: unexpected error — {error}"
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
+        return 1
+
+
+def _run(config, args):
     if args.date:
         target_date = datetime.date.fromisoformat(args.date)
     else:
         target_date = datetime.datetime.now(ZoneInfo(config.timezone)).date()
+
+    token_path = config.oauth_token_path
+    if not args.dry_run and (
+        not os.path.exists(token_path) or os.path.getsize(token_path) == 0
+    ):
+        message = (
+            f"⚠️ Stern duty bot: OAuth token file missing or empty at {token_path}; "
+            "run the interactive login to refresh it."
+        )
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
+        return 1
 
     if not args.force and not args.dry_run:
         if load_last_posted(STATE_PATH) == target_date.isoformat():
@@ -46,7 +69,9 @@ def main(argv=None):
     try:
         rows = fetch_rows(config)
     except Exception as error:
-        logger.error("Failed to read Google Sheet: %s", error)
+        message = f"⚠️ Stern duty bot: failed to read Google Sheet — {error}"
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
         return 1
 
     row = find_duty_row(rows, target_date, config.duty_year)
@@ -56,9 +81,12 @@ def main(argv=None):
 
     missing = missing_fields(row)
     if missing:
-        logger.error(
-            "Duty row for %s is missing required fields: %s", target_date, ", ".join(missing)
+        message = (
+            f"⚠️ Stern duty bot: duty row for {target_date} missing required "
+            f"fields: {', '.join(missing)}"
         )
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
         return 1
 
     directory = load_staff_directory(STAFF_DIRECTORY_PATH)
@@ -76,13 +104,17 @@ def main(argv=None):
         return 0
 
     if not config.slack_webhook_url:
-        logger.error("SLACK_WEBHOOK_URL is not set.")
+        message = "⚠️ Stern duty bot: SLACK_WEBHOOK_URL is not set."
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
         return 1
 
     try:
         post_message(config.slack_webhook_url, text)
     except RuntimeError as error:
-        logger.error("%s", error)
+        message = f"⚠️ Stern duty bot: failed to post to Slack — {error}"
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
         return 1
 
     save_last_posted(STATE_PATH, target_date.isoformat())
