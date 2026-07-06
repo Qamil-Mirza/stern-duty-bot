@@ -34,6 +34,16 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     config = load_config()
 
+    try:
+        return _run(config, args)
+    except Exception as error:
+        message = f"⚠️ Stern duty bot: unexpected error — {error}"
+        logger.error(message)
+        send_alert(config.slack_alert_webhook_url, message)
+        return 1
+
+
+def _run(config, args):
     if args.date:
         target_date = datetime.date.fromisoformat(args.date)
     else:

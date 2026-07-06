@@ -175,3 +175,16 @@ def test_no_alert_on_no_row(posts):
     sent, alerts = posts
     assert main_mod.main(["--date", "2026-12-25"]) == 0
     assert alerts == []
+
+
+def test_alert_on_unexpected_exception(posts, monkeypatch):
+    sent, alerts = posts
+
+    def boom(path):
+        raise ValueError("corrupt state file")
+
+    monkeypatch.setattr(main_mod, "load_last_posted", boom)
+    assert main_mod.main(["--date", "2026-07-05"]) == 1
+    assert len(alerts) == 1
+    assert "unexpected error" in alerts[0]
+    assert "corrupt state file" in alerts[0]
