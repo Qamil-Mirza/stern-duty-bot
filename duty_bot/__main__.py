@@ -29,6 +29,10 @@ def main(argv=None):
     arg_parser.add_argument(
         "--force", action="store_true", help="Post even if already posted for this date."
     )
+    arg_parser.add_argument("--rd", help="Override the RD staff name for this run.")
+    arg_parser.add_argument("--ard", help="Override the ARD staff name for this run.")
+    arg_parser.add_argument("--ram-a", help="Override the RAM A staff name for this run.")
+    arg_parser.add_argument("--ram-b", help="Override the RAM B staff name for this run.")
     args = arg_parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -78,6 +82,17 @@ def _run(config, args):
     if row is None:
         logger.info("No duty row found for today.")
         return 0
+
+    row = dict(row)
+    for field, value in (
+        ("RD", args.rd),
+        ("Stern ARD", args.ard),
+        ("Stern RAM A", args.ram_a),
+        ("Stern RAM B", args.ram_b),
+    ):
+        if value is not None:
+            logger.info("Overriding %s with %r for this run.", field, value)
+            row[field] = value
 
     missing = missing_fields(row)
     if missing:

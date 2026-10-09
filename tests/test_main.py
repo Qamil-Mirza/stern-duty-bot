@@ -71,6 +71,34 @@ def test_posts_message_and_records_state(posts, tmp_path):
     assert read_state(tmp_path) == "2026-07-05"
 
 
+def test_ram_a_override_replaces_only_ram_a(posts):
+    sent, alerts = posts
+    assert main_mod.main(["--date", "2026-07-05", "--ram-a", "Stedmon Searcie"]) == 0
+    assert sent == [
+        "Duty Rotation Sunday, July 5\n"
+        "\n"
+        "RD: <@URD>\n"
+        "ARD: <@UARD>\n"
+        "RAM A (phone/transport): <@URAMB>\n"
+        "RAM B (rounds/backup): <@URAMB>"
+    ]
+
+
+def test_override_can_fill_a_missing_field(posts, monkeypatch):
+    sent, alerts = posts
+    incomplete = dict(ROW, RD="")
+    monkeypatch.setattr(main_mod, "fetch_rows", lambda config: [incomplete])
+    assert main_mod.main(["--date", "2026-07-05", "--rd", "Anica Terbijhe"]) == 0
+    assert sent == [EXPECTED_MESSAGE]
+    assert alerts == []
+
+
+def test_override_does_not_mutate_shared_row(posts):
+    sent, alerts = posts
+    main_mod.main(["--date", "2026-07-05", "--ram-a", "Stedmon Searcie"])
+    assert ROW["Stern RAM A"] == "Simran Kaur"
+
+
 def test_skips_duplicate_post_for_same_date(posts):
     sent, alerts = posts
     main_mod.main(["--date", "2026-07-05"])
